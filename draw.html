@@ -78,7 +78,7 @@ textarea{
 <div class="info">
 Click to add points.<br>
 Drag vertices to edit.<br>
-Finish Polygon when done.
+Finish Polygon when done (or press Enter).
 </div>
 
 <textarea id="output"></textarea>
@@ -117,6 +117,12 @@ const layout = {
 
 let currentType = "bedroom";
 let currentPolygon = [];
+let pointer = null;
+let hoveredVertex = null;
+let dragging = null;
+let suppressClick = false;
+
+const PICK_RADIUS = 12;
 
 const buttons = {
     bedroom: document.getElementById("bedroomBtn"),
@@ -180,6 +186,65 @@ function drawGrid(){
     }
 }
 
+function drawPointerGuides(){
+
+    if(!pointer)
+        return;
+
+    const x = pointer.x;
+    const y = pointer.y;
+
+    ctx.save();
+
+    ctx.setLineDash([6,4]);
+    ctx.strokeStyle="#90a4ae";
+    ctx.lineWidth=1;
+
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x,canvas.height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    ctx.lineTo(canvas.width,y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.fillStyle="#455a64";
+    ctx.font="12px Arial";
+    ctx.fillText(`x: ${x}`,Math.min(x+8,canvas.width-45),14);
+    ctx.fillText(`y: ${y}`,8,Math.max(y-8,14));
+
+    ctx.restore();
+}
+
+function drawVertex(point,color){
+
+    const isHighlighted =
+        point===hoveredVertex ||
+        point===dragging;
+
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.arc(point.x,point.y,5,0,Math.PI*2);
+    ctx.fill();
+
+    if(isHighlighted){
+        ctx.strokeStyle="#ffffff";
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(point.x,point.y,8,0,Math.PI*2);
+        ctx.stroke();
+
+        ctx.strokeStyle="#d32f2f";
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(point.x,point.y,10,0,Math.PI*2);
+        ctx.stroke();
+    }
+}
+
 const colors = {
     bedroom:"#2196f3",
     wall:"#000000",
@@ -213,22 +278,7 @@ function drawPolygon(points,color){
     ctx.closePath();
     ctx.stroke();
 
-    points.forEach(p=>{
-
-        ctx.fillStyle=color;
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x,
-            p.y,
-            5,
-            0,
-            Math.PI*2
-        );
-
-        ctx.fill();
-    });
+    points.forEach(p=> drawVertex(p,color));
 }
 
 function drawCurrent(){
@@ -256,20 +306,7 @@ function drawCurrent(){
 
     ctx.stroke();
 
-    currentPolygon.forEach(p=>{
-
-        ctx.fillStyle="red";
-
-        ctx.beginPath();
-        ctx.arc(
-            p.x,
-            p.y,
-            5,
-            0,
-            Math.PI*2
-        );
-        ctx.fill();
-    });
+    currentPolygon.forEach(p=> drawVertex(p,"red"));
 }
 
 function render(){
@@ -282,6 +319,7 @@ function render(){
     );
 
     drawGrid();
+    drawPointerGuides();
 
     Object.keys(layout)
         .forEach(type=>{
@@ -308,6 +346,11 @@ canvas.addEventListener("click",e=>{
     if(dragging)
         return;
 
+    if(suppressClick){
+        suppressClick=false;
+        return;
+    }
+
     const rect =
         canvas.getBoundingClientRect();
 
@@ -324,9 +367,7 @@ canvas.addEventListener("click",e=>{
     render();
 });
 
-document
-.getElementById("finishBtn")
-.onclick=()=>{
+function finishCurrentPolygon(){
 
     if(currentPolygon.length<3)
         return;
@@ -341,8 +382,15 @@ document
         );
 
     currentPolygon=[];
+    hoveredVertex=null;
 
     render();
+}
+
+document
+.getElementById("finishBtn")
+.onclick=()=>{
+    finishCurrentPolygon();
 };
 
 document
@@ -359,41 +407,44 @@ document
     render();
 };
 
-let dragging = null;
+function getAllVertices(){
 
-function findVertex(x,y){
-
-    const allTypes=[
-        "bedroom",
-        "wall",
-        "door",
-        "window"
-    ];
+    const all=[];
+    const allTypes=["bedroom","wall","door","window"];
 
     for(const type of allTypes){
-
         for(const poly of layout[type]){
-
             for(const vertex of poly){
-
-                const dx=
-                    vertex.x-x;
-
-                const dy=
-                    vertex.y-y;
-
-                if(
-                    Math.sqrt(
-                        dx*dx+dy*dy
-                    )<10
-                ){
-                    return vertex;
-                }
+                all.push(vertex);
             }
         }
     }
 
-    return null;
+    for(const vertex of currentPolygon){
+        all.push(vertex);
+    }
+
+    return all;
+}
+
+function findVertex(x,y){
+
+    let closest = null;
+    let minDist = Infinity;
+
+    for(const vertex of getAllVertices()){
+
+        const dx = vertex.x - x;
+        const dy = vertex.y - y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+
+        if(dist < PICK_RADIUS && dist < minDist){
+            minDist = dist;
+            closest = vertex;
+        }
+    }
+
+    return closest;
 }
 
 canvas.addEventListener(
@@ -405,14 +456,31 @@ e=>{
         e.offsetX,
         e.offsetY
       );
+
+        hoveredVertex = dragging;
+        suppressClick = !!dragging;
+
+        render();
 });
 
 canvas.addEventListener(
 "mousemove",
 e=>{
 
-    if(!dragging)
+    pointer = {
+        x: snap(e.offsetX),
+        y: snap(e.offsetY)
+    };
+
+    hoveredVertex = findVertex(
+        e.offsetX,
+        e.offsetY
+    );
+
+    if(!dragging){
+        render();
         return;
+    }
 
     dragging.x=
       snap(e.offsetX);
@@ -427,12 +495,36 @@ canvas.addEventListener(
 "mouseup",
 ()=>{
     dragging=null;
+    suppressClick=false;
 });
 
 canvas.addEventListener(
 "mouseleave",
 ()=>{
     dragging=null;
+    hoveredVertex=null;
+    pointer=null;
+    render();
+});
+
+document.addEventListener("keydown",e=>{
+
+    if(e.key!=="Enter")
+        return;
+
+    const tag =
+        (e.target && e.target.tagName) || "";
+
+    if(
+        tag==="TEXTAREA" ||
+        tag==="INPUT" ||
+        (e.target && e.target.isContentEditable)
+    ){
+        return;
+    }
+
+    e.preventDefault();
+    finishCurrentPolygon();
 });
 
 function polygonToWKT(points){
