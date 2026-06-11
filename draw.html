@@ -177,7 +177,11 @@ let mouseDownVertex = null;
 let didDragVertex = false;
 let zoomLevel = 1;
 let dragStartSnapshot = null;
+let offsetX = 0;
+let offsetY = 0;
 
+let isPanning = false;
+let panStart = null;
 const historyStack = [];
 
 const PICK_RADIUS = 12;
@@ -579,8 +583,9 @@ function render(){
     );
 
     ctx.save();
-    ctx.scale(zoomLevel,zoomLevel);
 
+    ctx.translate(offsetX,offsetY);
+    ctx.scale(zoomLevel,zoomLevel);
     drawGrid();
     drawPointerGuides();
 
@@ -659,22 +664,26 @@ function undo(){
 
     render();
 }
-
-function getWorldPosition(e, snapToGrid = false){
+function getWorldPosition(e,snapToGrid=false){
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoomLevel;
-    const y = (e.clientY - rect.top) / zoomLevel;
+
+    const x =
+        (e.clientX - rect.left - offsetX)
+        / zoomLevel;
+
+    const y =
+        (e.clientY - rect.top - offsetY)
+        / zoomLevel;
 
     if(!snapToGrid)
         return {x,y};
 
     return {
-        x: snap(x),
-        y: snap(y)
+        x:snap(x),
+        y:snap(y)
     };
 }
-
 function setZoom(nextZoom){
 
     zoomLevel = Math.max(
@@ -821,7 +830,32 @@ function findVertex(x,y){
 canvas.addEventListener(
 "mousedown",
 e=>{
+if(e.button===1){
 
+    isPanning=true;
+
+    panStart={
+        x:e.clientX,
+        y:e.clientY,
+        offsetX,
+        offsetY
+    };
+
+    return;
+}
+if(isPanning){
+
+    offsetX =
+        panStart.offsetX +
+        (e.clientX - panStart.x);
+
+    offsetY =
+        panStart.offsetY +
+        (e.clientY - panStart.y);
+
+    render();
+    return;
+}
         const world = getWorldPosition(e,false);
 
     dragging=
@@ -843,7 +877,19 @@ e=>{
 canvas.addEventListener(
 "mousemove",
 e=>{
+if(isPanning){
 
+    offsetX =
+        panStart.offsetX +
+        (e.clientX - panStart.x);
+
+    offsetY =
+        panStart.offsetY +
+        (e.clientY - panStart.y);
+
+    render();
+    return;
+}
     const world = getWorldPosition(e,false);
     const snapped = {
         x: snap(world.x),
@@ -887,6 +933,8 @@ e=>{
 canvas.addEventListener(
 "mouseup",
 ()=>{
+isPanning=false;
+panStart=null;
     if(didDragVertex){
         pushSnapshot(dragStartSnapshot);
     }
