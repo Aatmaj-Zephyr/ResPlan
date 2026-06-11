@@ -1,7 +1,7 @@
 const GRID = 10;
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 50;
-const ZOOM_STEP = 1;
+const ZOOM_STEP = 0.5;
 const DEFAULT_ZOOM_LEVEL = 5;
 
 const HISTORY_LIMIT = 200;
@@ -308,12 +308,12 @@ function drawAnnotation(text,x,y,color){
 
     ctx.save();
     ctx.font=`${getAnnotationFontSize()}px Arial`;
-    const paddingX = 4;
-    const paddingY = 3;
+    const paddingX = 4/Math.sqrt(zoomLevel);
+    const paddingY = 3/Math.sqrt(zoomLevel);
     const width = ctx.measureText(text).width + paddingX*2;
     const height = getAnnotationFontSize() + paddingY*2;
 
-    ctx.fillStyle="rgba(255,255,255,0.8)";
+    ctx.fillStyle="rgba(255,255,255,0.4)";
     ctx.fillRect(x - width/2,y - height/2,width,height);
 
     ctx.strokeStyle="rgba(120,120,120,0.5)";
@@ -337,8 +337,10 @@ function drawSegmentLength(a,b,color){
     const dy = b.y - a.y;
     const mag = Math.sqrt(dx*dx + dy*dy) || 1;
 
-    const offsetX = -dy / mag * 12;
-    const offsetY = dx / mag * 12;
+    const labelOffset = 12 / zoomLevel;
+
+    const offsetX = -dy / mag * labelOffset;
+    const offsetY = dx / mag * labelOffset;
 
     drawAnnotation(
         `${getDistance(a,b).toFixed(1)} px`,
@@ -365,12 +367,14 @@ function drawVertexAngle(prev,curr,next,color){
     if(angle===null)
         return;
 
-    drawAnnotation(
-        `${angle.toFixed(1)}°`,
-        curr.x,
-        curr.y - 18,
-        color
-    );
+ const offset = 18 / zoomLevel;
+
+drawAnnotation(
+    `${angle.toFixed(1)}°`,
+    curr.x,
+    curr.y - offset,
+    color
+);
 }
 
 function drawClosedPolygonAnnotations(points,color){
@@ -956,7 +960,7 @@ function findVertex(x,y){
         const dy = vertex.y - y;
         const dist = Math.sqrt(dx*dx+dy*dy);
 
-        if(dist < PICK_RADIUS/Math.sqrt(zoomLevel) && dist < minDist){
+        if(dist < PICK_RADIUS && dist < minDist){
             minDist = dist;
             closest = vertex;
         }
@@ -1351,61 +1355,75 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
         alert("Load failed: check console");
     }
 });
-
-function parseWKTMultipolygon(wkt) {
+function parseWKT(wkt) {
     if (!wkt || typeof wkt !== "string") return [];
     if (wkt.includes("EMPTY")) return [];
 
-    const polygons = [];
+    // normalize spacing
+    wkt = wkt.trim();
 
-    // Extract everything inside MULTIPOLYGON(...)
-    const inner = wkt
-        .replace("MULTIPOLYGON", "")
-        .trim()
-        .replace(/^\(/, "")
-        .replace(/\)$/, "");
+    // -------------------------
+    // POLYGON
+    // -------------------------
+    if (wkt.startsWith("POLYGON")) {
+        const inner = wkt
+            .replace("POLYGON", "")
+            .trim()
+            .replace(/^\(\(/, "")
+            .replace(/\)\)$/, "");
 
-    // Match each polygon block safely
-    const matches = inner.match(/\(\([^\)]+\)\)/g);
-    if (!matches) {
-        console.warn("No polygons parsed from:", wkt);
-        return [];
-    }
-
-    for (const m of matches) {
-        const clean = m
-            .replace(/\(\(/g, "")
-            .replace(/\)\)/g, "");
-
-        const points = clean.split(",").map(pair => {
-            const parts = pair.trim().split(" ");
-
-            if (parts.length < 2) {
-                console.warn("Bad point:", pair);
-                return null;
-            }
-
-            const x = Number(parts[0]);
-            const y = Number(parts[1]);
-
-            if (Number.isNaN(x) || Number.isNaN(y)) {
-                console.warn("NaN point:", pair);
-                return null;
-            }
+        const points = inner.split(",").map(pair => {
+            const [x, y] = pair.trim().split(" ").map(Number);
 
             return {
                 x,
                 y: EXPORT_HEIGHT - y
             };
-        }).filter(Boolean);
+        }).filter(p => !Number.isNaN(p.x));
 
-        if (points.length >= 3) {
-            polygons.push(points);
-        }
+        return points.length >= 3 ? [points] : [];
     }
 
-    return polygons;
-}function loadFromJSON(data) {
+    // -------------------------
+    // MULTIPOLYGON
+    // -------------------------
+    if (wkt.startsWith("MULTIPOLYGON")) {
+        const polygons = [];
+
+        const inner = wkt
+            .replace("MULTIPOLYGON", "")
+            .trim();
+
+        // match ((...))
+        const matches = inner.match(/\(\([^\)]+\)\)/g);
+        if (!matches) return [];
+
+        for (const m of matches) {
+            const clean = m
+                .replace(/\(\(/g, "")
+                .replace(/\)\)/g, "");
+
+            const points = clean.split(",").map(pair => {
+                const [x, y] = pair.trim().split(" ").map(Number);
+
+                return {
+                    x,
+                    y: EXPORT_HEIGHT - y
+                };
+            }).filter(p => !Number.isNaN(p.x));
+
+            if (points.length >= 3) {
+                polygons.push(points);
+            }
+        }
+
+        return polygons;
+    }
+
+    console.warn("Unknown WKT type:", wkt);
+    return [];
+}
+function loadFromJSON(data) {
     console.log("Applying layout...");
 
     pushHistory();
@@ -1430,8 +1448,8 @@ function parseWKTMultipolygon(wkt) {
 
         if (!CATEGORY_COLORS[key]) continue;
 
-        const parsed = parseWKTMultipolygon(data[key]);
-
+        const parsed = parseWKT(data[key]);
+        
         console.log(key, "parsed polygons:", parsed.length);
 
         layout[key] = parsed;
