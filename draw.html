@@ -55,6 +55,25 @@ textarea{
     font-size:13px;
     color:#555;
 }
+
+.row{
+    display:flex;
+    gap:6px;
+    margin-bottom:6px;
+}
+
+.row button{
+    width:auto;
+    flex:1;
+    margin-bottom:0;
+}
+
+#zoomLabel{
+    display:block;
+    margin:6px 0 10px;
+    font-size:12px;
+    color:#444;
+}
 </style>
 </head>
 
@@ -72,6 +91,15 @@ textarea{
 <hr>
 
 <button id="finishBtn">Finish Polygon</button>
+<button id="undoBtn">Undo (Ctrl/Cmd+Z)</button>
+
+<div class="row">
+<button id="zoomOutBtn">Zoom -</button>
+<button id="zoomResetBtn">100%</button>
+<button id="zoomInBtn">Zoom +</button>
+</div>
+<span id="zoomLabel">Zoom: 100%</span>
+
 <button id="exportBtn">Export JSON</button>
 <button id="clearBtn">Clear All</button>
 
@@ -92,6 +120,10 @@ Finish Polygon when done (or press Enter).
 <script>
 
 const GRID = 10;
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.1;
+const HISTORY_LIMIT = 200;
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -123,6 +155,10 @@ let dragging = null;
 let suppressClick = false;
 let mouseDownVertex = null;
 let didDragVertex = false;
+let zoomLevel = 1;
+let dragStartSnapshot = null;
+
+const historyStack = [];
 
 const PICK_RADIUS = 12;
 
@@ -170,20 +206,23 @@ function snap(v){
 
 function drawGrid(){
 
+    const maxX = canvas.width / zoomLevel;
+    const maxY = canvas.height / zoomLevel;
+
     ctx.strokeStyle="#eee";
     ctx.lineWidth=1;
 
-    for(let x=0;x<canvas.width;x+=GRID){
+    for(let x=0;x<maxX;x+=GRID){
         ctx.beginPath();
         ctx.moveTo(x,0);
-        ctx.lineTo(x,canvas.height);
+        ctx.lineTo(x,maxY);
         ctx.stroke();
     }
 
-    for(let y=0;y<canvas.height;y+=GRID){
+    for(let y=0;y<maxY;y+=GRID){
         ctx.beginPath();
         ctx.moveTo(0,y);
-        ctx.lineTo(canvas.width,y);
+        ctx.lineTo(maxX,y);
         ctx.stroke();
     }
 }
@@ -204,12 +243,12 @@ function drawPointerGuides(){
 
     ctx.beginPath();
     ctx.moveTo(x,0);
-    ctx.lineTo(x,canvas.height);
+    ctx.lineTo(x,canvas.height/zoomLevel);
     ctx.stroke();
 
     ctx.beginPath();
     ctx.moveTo(0,y);
-    ctx.lineTo(canvas.width,y);
+    ctx.lineTo(canvas.width/zoomLevel,y);
     ctx.stroke();
 
     ctx.setLineDash([]);
@@ -507,6 +546,9 @@ function render(){
         canvas.height
     );
 
+    ctx.save();
+    ctx.scale(zoomLevel,zoomLevel);
+
     drawGrid();
     drawPointerGuides();
 
@@ -526,9 +568,94 @@ function render(){
     });
 
     drawCurrent();
+
+    ctx.restore();
 }
 
 render();
+
+function cloneState(){
+    return {
+        layout: JSON.parse(JSON.stringify(layout)),
+        currentPolygon: JSON.parse(JSON.stringify(currentPolygon)),
+        currentType
+    };
+}
+
+function applyState(state){
+
+    layout.bedroom = state.layout.bedroom || [];
+    layout.wall = state.layout.wall || [];
+    layout.door = state.layout.door || [];
+    layout.window = state.layout.window || [];
+    layout.id = state.layout.id;
+    layout.wall_depth = state.layout.wall_depth;
+
+    currentPolygon = state.currentPolygon || [];
+    currentType = state.currentType || currentType;
+    updateButtons();
+}
+
+function pushHistory(){
+    historyStack.push(cloneState());
+    if(historyStack.length > HISTORY_LIMIT)
+        historyStack.shift();
+}
+
+function pushSnapshot(snapshot){
+    if(!snapshot)
+        return;
+    historyStack.push(snapshot);
+    if(historyStack.length > HISTORY_LIMIT)
+        historyStack.shift();
+}
+
+function undo(){
+
+    if(historyStack.length===0)
+        return;
+
+    const prev = historyStack.pop();
+    applyState(prev);
+
+    hoveredVertex = null;
+    dragging = null;
+    pointer = null;
+    mouseDownVertex = null;
+    didDragVertex = false;
+    suppressClick = false;
+    dragStartSnapshot = null;
+
+    render();
+}
+
+function getWorldPosition(e, snapToGrid = false){
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / zoomLevel;
+    const y = (e.clientY - rect.top) / zoomLevel;
+
+    if(!snapToGrid)
+        return {x,y};
+
+    return {
+        x: snap(x),
+        y: snap(y)
+    };
+}
+
+function setZoom(nextZoom){
+
+    zoomLevel = Math.max(
+        ZOOM_MIN,
+        Math.min(ZOOM_MAX,nextZoom)
+    );
+
+    document.getElementById("zoomLabel")
+        .textContent = `Zoom: ${Math.round(zoomLevel*100)}%`;
+
+    render();
+}
 
 canvas.addEventListener("click",e=>{
 
@@ -536,6 +663,8 @@ canvas.addEventListener("click",e=>{
         return;
 
     if(mouseDownVertex && !didDragVertex){
+
+        pushHistory();
 
         currentPolygon.push({
             x: mouseDownVertex.x,
@@ -560,18 +689,14 @@ canvas.addEventListener("click",e=>{
         return;
     }
 
-    const rect =
-        canvas.getBoundingClientRect();
+    const pos = getWorldPosition(e,true);
 
-    const x = snap(
-        e.clientX - rect.left
-    );
+    pushHistory();
 
-    const y = snap(
-        e.clientY - rect.top
-    );
-
-    currentPolygon.push({x,y});
+    currentPolygon.push({
+        x: pos.x,
+        y: pos.y
+    });
 
     mouseDownVertex = null;
     didDragVertex = false;
@@ -583,6 +708,8 @@ function finishCurrentPolygon(){
 
     if(currentPolygon.length<3)
         return;
+
+    pushHistory();
 
     layout[currentType]
         .push(
@@ -608,6 +735,8 @@ document
 document
 .getElementById("clearBtn")
 .onclick=()=>{
+
+    pushHistory();
 
     layout.bedroom=[];
     layout.wall=[];
@@ -663,11 +792,15 @@ canvas.addEventListener(
 "mousedown",
 e=>{
 
+        const world = getWorldPosition(e,false);
+
     dragging=
       findVertex(
-        e.offsetX,
-        e.offsetY
+                world.x,
+                world.y
       );
+
+        dragStartSnapshot = dragging ? cloneState() : null;
 
         mouseDownVertex = dragging;
         didDragVertex = false;
@@ -681,14 +814,20 @@ canvas.addEventListener(
 "mousemove",
 e=>{
 
+    const world = getWorldPosition(e,false);
+    const snapped = {
+        x: snap(world.x),
+        y: snap(world.y)
+    };
+
     pointer = {
-        x: snap(e.offsetX),
-        y: snap(e.offsetY)
+        x: snapped.x,
+        y: snapped.y
     };
 
     hoveredVertex = findVertex(
-        e.offsetX,
-        e.offsetY
+        world.x,
+        world.y
     );
 
     if(!dragging){
@@ -696,8 +835,8 @@ e=>{
         return;
     }
 
-        const nextX = snap(e.offsetX);
-        const nextY = snap(e.offsetY);
+        const nextX = snapped.x;
+        const nextY = snapped.y;
 
         if(
                 dragging.x!==nextX ||
@@ -718,13 +857,19 @@ e=>{
 canvas.addEventListener(
 "mouseup",
 ()=>{
+    if(didDragVertex){
+        pushSnapshot(dragStartSnapshot);
+    }
+
     dragging=null;
+    dragStartSnapshot=null;
 });
 
 canvas.addEventListener(
 "mouseleave",
 ()=>{
     dragging=null;
+    dragStartSnapshot=null;
     mouseDownVertex=null;
     didDragVertex=false;
     hoveredVertex=null;
@@ -733,6 +878,26 @@ canvas.addEventListener(
 });
 
 document.addEventListener("keydown",e=>{
+
+    const key = (e.key || "").toLowerCase();
+
+    if((e.ctrlKey || e.metaKey) && key==="z"){
+        e.preventDefault();
+        undo();
+        return;
+    }
+
+    if(key==="+"){
+        e.preventDefault();
+        setZoom(zoomLevel + ZOOM_STEP);
+        return;
+    }
+
+    if(key==="-"){
+        e.preventDefault();
+        setZoom(zoomLevel - ZOOM_STEP);
+        return;
+    }
 
     if(e.key!=="Enter")
         return;
@@ -751,6 +916,33 @@ document.addEventListener("keydown",e=>{
     e.preventDefault();
     finishCurrentPolygon();
 });
+
+canvas.addEventListener("wheel",e=>{
+
+    e.preventDefault();
+
+    const delta = e.deltaY < 0
+        ? ZOOM_STEP
+        : -ZOOM_STEP;
+
+    setZoom(zoomLevel + delta);
+},{passive:false});
+
+document.getElementById("undoBtn").onclick=()=>{
+    undo();
+};
+
+document.getElementById("zoomInBtn").onclick=()=>{
+    setZoom(zoomLevel + ZOOM_STEP);
+};
+
+document.getElementById("zoomOutBtn").onclick=()=>{
+    setZoom(zoomLevel - ZOOM_STEP);
+};
+
+document.getElementById("zoomResetBtn").onclick=()=>{
+    setZoom(1);
+};
 
 function polygonToWKT(points){
 
@@ -810,14 +1002,32 @@ document
             layout.wall_depth
     };
 
-    document
-      .getElementById("output")
-      .value =
-        JSON.stringify(
-            result,
-            null,
-            2
+        const text = JSON.stringify(
+                result,
+                null,
+                2
         );
+
+        document
+            .getElementById("output")
+            .value = text;
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2,"0");
+        const stamp =
+                `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_`+
+                `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+        const filename = `plan_export_${stamp}.json`;
+        const blob = new Blob([text],{type:"application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
 };
 
 </script>
