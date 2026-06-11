@@ -21,7 +21,7 @@ const CATEGORY_COLORS = {
 };
 
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
-
+let SHOW_ANNOTATIONS = true;
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -34,7 +34,9 @@ function resize(){
 }
 resize();
 window.addEventListener("resize",resize);
-
+function showAnnotations() {
+    return  SHOW_ANNOTATIONS;
+}
 const layout = {
     living: [],
     bedroom: [],
@@ -514,8 +516,9 @@ const isSelected =
     ctx.stroke();
 
     points.forEach(p=> drawVertex(p,color));
-    drawClosedPolygonAnnotations(points,"#37474f");
-}
+    if (showAnnotations() || (selectedPolygon && selectedPolygon.poly === points)) {
+     drawClosedPolygonAnnotations(points, "#37474f");
+}}
 
 function hexToRgba(hex, alpha){
 
@@ -558,8 +561,9 @@ function drawCurrent(){
     ctx.stroke();
 
     currentPolygon.forEach(p=> drawVertex(p,"red"));
-    drawOpenPolylineAnnotations(currentPolygon,"#37474f");
-    drawPreviewFromLastPoint();
+if (showAnnotations()) {
+    drawOpenPolylineAnnotations(currentPolygon, "#37474f");
+}    drawPreviewFromLastPoint();
 }
 function pointInPolygon(pt, poly){
 
@@ -843,7 +847,12 @@ function finishCurrentPolygon(){
 }
 
  
+document.getElementById("toggleAnnotationsBtn").onclick = () => {
+    SHOW_ANNOTATIONS = !SHOW_ANNOTATIONS;
+    render();
+};
 
+ 
 document
 .getElementById("clearBtn")
 .onclick=()=>{
