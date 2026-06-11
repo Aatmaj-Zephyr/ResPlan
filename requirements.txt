@@ -1,0 +1,6 @@
+shapely
+geopandas
+matplotlib
+networkx
+numpy
+opencv-python
