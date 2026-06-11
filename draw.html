@@ -104,6 +104,7 @@ textarea{
 Click to add points.<br>
 Drag vertices to edit.<br>
 Finish Polygon when done (or press Enter).
+To delete, hover a polygon, press backspace or delete key.
 </div>
 
 <textarea id="output"></textarea>
@@ -169,6 +170,8 @@ const layout = {
 
 let currentType = "bedroom";
 let currentPolygon = [];
+let selectedPolygon = null;
+let selectedCategory = null;
 let pointer = null;
 let hoveredVertex = null;
 let dragging = null;
@@ -551,7 +554,9 @@ function drawPreviewFromLastPoint(){
 }
 
 function drawPolygon(points,color){
-
+const isSelected =
+    selectedPolygon &&
+    selectedPolygon.poly === points;
     if(points.length===0)
         return;
 
@@ -566,6 +571,7 @@ function drawPolygon(points,color){
     ctx.fill();
 
     ctx.strokeStyle=color;
+    ctx.strokeStyle = isSelected ? "#ff3b30" : color;
     ctx.lineWidth=2;
 
     ctx.beginPath();
@@ -634,7 +640,46 @@ function drawCurrent(){
     drawOpenPolylineAnnotations(currentPolygon,"#37474f");
     drawPreviewFromLastPoint();
 }
+function pointInPolygon(pt, poly){
 
+    // ray casting algorithm
+    let inside = false;
+
+    for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+
+        const intersect =
+            ((yi > pt.y) !== (yj > pt.y)) &&
+            (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi + 0.00001) + xi);
+
+        if(intersect)
+            inside = !inside;
+    }
+
+    return inside;
+}
+function findPolygonAt(x,y){
+
+    for(const category of CATEGORIES){
+
+        const polys = layout[category];
+
+        for(let i=0;i<polys.length;i++){
+
+            if(pointInPolygon({x,y}, polys[i])){
+                return {
+                    category,
+                    index: i,
+                    poly: polys[i]
+                };
+            }
+        }
+    }
+
+    return null;
+}
 function render(){
 
     ctx.clearRect(
@@ -1072,7 +1117,7 @@ if(isPanning){
         world.x,
         world.y
     );
-
+    selectedPolygon = findPolygonAt(world.x, world.y);
     if(!dragging){
         render();
         return;
@@ -1161,7 +1206,28 @@ if(key === "escape"){
         setZoom(zoomLevel - ZOOM_STEP);
         return;
     }
+const isDeleteKey =
+    e.key === "Delete" ||
+    e.key === "Backspace";
 
+if(isDeleteKey){
+
+    if(selectedPolygon){
+
+        pushHistory();
+
+        const arr =
+            layout[selectedPolygon.category];
+
+        arr.splice(selectedPolygon.index,1);
+
+        selectedPolygon = null;
+
+        render();
+    }
+
+    return;
+}
     if(e.key!=="Enter")
         return;
 
