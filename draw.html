@@ -83,10 +83,7 @@ textarea{
 
 <h3>Floor Editor</h3>
 
-<button id="bedroomBtn">Bedroom</button>
-<button id="wallBtn">Wall</button>
-<button id="doorBtn">Door</button>
-<button id="windowBtn">Window</button>
+<div id="categoryButtons"></div>
 
 <hr>
 
@@ -125,6 +122,22 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.1;
 const HISTORY_LIMIT = 200;
 
+const CATEGORY_COLORS = {
+    living: "#d9d9d9",
+    bedroom: "#66c2a5",
+    bathroom: "#fc8d62",
+    kitchen: "#8da0cb",
+    door: "#e78ac3",
+    window: "#a6d854",
+    wall: "#ffd92f",
+    front_door: "#a63603",
+    balcony: "#b3b3b3",
+    storage: "#a37c52",
+    stair: "#9e9ac8"
+};
+
+const CATEGORIES = Object.keys(CATEGORY_COLORS);
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -139,10 +152,17 @@ resize();
 window.addEventListener("resize",resize);
 
 const layout = {
+    living: [],
     bedroom: [],
+    bathroom: [],
+    kitchen: [],
     wall: [],
     door: [],
     window: [],
+    front_door: [],
+    balcony: [],
+    storage: [],
+    stair: [],
     id: 14433,
     wall_depth: 4.5
 };
@@ -162,12 +182,17 @@ const historyStack = [];
 
 const PICK_RADIUS = 12;
 
-const buttons = {
-    bedroom: document.getElementById("bedroomBtn"),
-    wall: document.getElementById("wallBtn"),
-    door: document.getElementById("doorBtn"),
-    window: document.getElementById("windowBtn")
-};
+const categoryButtonsHost = document.getElementById("categoryButtons");
+const buttons = {};
+
+for(const category of CATEGORIES){
+    const button = document.createElement("button");
+    button.id = `${category}Btn`;
+    button.textContent = category.replace(/_/g," ");
+    button.style.borderLeft = `8px solid ${CATEGORY_COLORS[category]}`;
+    categoryButtonsHost.appendChild(button);
+    buttons[category] = button;
+}
 
 function updateButtons(){
 
@@ -180,25 +205,12 @@ function updateButtons(){
 
 updateButtons();
 
-buttons.bedroom.onclick=()=>{
-    currentType="bedroom";
-    updateButtons();
-};
-
-buttons.wall.onclick=()=>{
-    currentType="wall";
-    updateButtons();
-};
-
-buttons.door.onclick=()=>{
-    currentType="door";
-    updateButtons();
-};
-
-buttons.window.onclick=()=>{
-    currentType="window";
-    updateButtons();
-};
+for(const category of CATEGORIES){
+    buttons[category].onclick = () => {
+        currentType = category;
+        updateButtons();
+    };
+}
 
 function snap(v){
     return Math.round(v / GRID) * GRID;
@@ -286,12 +298,7 @@ function drawVertex(point,color){
     }
 }
 
-const colors = {
-    bedroom:"#2196f3",
-    wall:"#000000",
-    door:"#4caf50",
-    window:"#ff9800"
-};
+const colors = CATEGORY_COLORS;
 
 function getDistance(a,b){
     const dx = b.x - a.x;
@@ -482,7 +489,8 @@ function drawPolygon(points,color){
     if(points.length===0)
         return;
 
-    ctx.fillStyle="rgba(158,158,158,0.35)";
+    const fillColor = color || "#bdbdbd";
+    ctx.fillStyle = hexToRgba(fillColor, 0.35);
     ctx.beginPath();
     ctx.moveTo(points[0].x,points[0].y);
     for(let i=1;i<points.length;i++){
@@ -514,6 +522,21 @@ function drawPolygon(points,color){
 
     points.forEach(p=> drawVertex(p,color));
     drawClosedPolygonAnnotations(points,"#37474f");
+}
+
+function hexToRgba(hex, alpha){
+
+    const clean = hex.replace("#","");
+    const full = clean.length === 3
+        ? clean.split("").map(ch => ch + ch).join("")
+        : clean;
+
+    const value = parseInt(full, 16);
+    const r = (value >> 16) & 255;
+    const g = (value >> 8) & 255;
+    const b = value & 255;
+
+    return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function drawCurrent(){
@@ -593,10 +616,9 @@ function cloneState(){
 
 function applyState(state){
 
-    layout.bedroom = state.layout.bedroom || [];
-    layout.wall = state.layout.wall || [];
-    layout.door = state.layout.door || [];
-    layout.window = state.layout.window || [];
+    for(const category of CATEGORIES){
+        layout[category] = state.layout[category] || [];
+    }
     layout.id = state.layout.id;
     layout.wall_depth = state.layout.wall_depth;
 
@@ -747,10 +769,9 @@ document
 
     pushHistory();
 
-    layout.bedroom=[];
-    layout.wall=[];
-    layout.door=[];
-    layout.window=[];
+    for(const category of CATEGORIES){
+        layout[category]=[];
+    }
 
     currentPolygon=[];
 
@@ -985,25 +1006,12 @@ document
 
     const result = {
 
-        bedroom:
-            multipolygonToWKT(
-                layout.bedroom
-            ),
-
-        wall:
-            multipolygonToWKT(
-                layout.wall
-            ),
-
-        door:
-            multipolygonToWKT(
-                layout.door
-            ),
-
-        window:
-            multipolygonToWKT(
-                layout.window
-            ),
+        ...Object.fromEntries(
+            CATEGORIES.map(category => [
+                category,
+                multipolygonToWKT(layout[category])
+            ])
+        ),
 
         id: layout.id,
 
