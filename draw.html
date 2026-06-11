@@ -185,10 +185,16 @@ let panStart = null;
 const historyStack = [];
 
 const PICK_RADIUS = 12;
-
+const LINE_SNAP_DISTANCE = 12;
 const categoryButtonsHost = document.getElementById("categoryButtons");
 const buttons = {};
+function getAnnotationFontSize(){
+    // base size 12px at normal zoom
+    // shrinks slightly when zooming in
+    const size = 8 / Math.sqrt(zoomLevel);
 
+    return Math.max(8, Math.min(14, size));
+}
 for(const category of CATEGORIES){
     const button = document.createElement("button");
     button.id = `${category}Btn`;
@@ -216,8 +222,31 @@ for(const category of CATEGORIES){
     };
 }
 
+function getSnapSize(){
+
+    if(zoomLevel >= 3)
+        return 1;
+
+    if(zoomLevel >= 2)
+        return 2;
+
+    if(zoomLevel >= 1.5)
+        return 5;
+
+    return 10;
+}
+function getGridSize(){
+    return GRID;
+}
 function snap(v){
-    return Math.round(v / GRID) * GRID;
+
+    const snapSize =
+        getSnapSize();
+
+    return (
+        Math.round(v / snapSize)
+        * snapSize
+    );
 }
 
 function drawGrid(){
@@ -225,57 +254,89 @@ function drawGrid(){
     const maxX = canvas.width / zoomLevel;
     const maxY = canvas.height / zoomLevel;
 
-    ctx.strokeStyle="#eee";
-    ctx.lineWidth=1;
+    const startX =
+        Math.floor(
+            (-offsetX / zoomLevel) / GRID
+        ) * GRID;
 
-    for(let x=0;x<maxX;x+=GRID){
+    const startY =
+        Math.floor(
+            (-offsetY / zoomLevel) / GRID
+        ) * GRID;
+
+    ctx.strokeStyle="#eee";
+    ctx.lineWidth=1/zoomLevel;
+
+    for(
+        let x=startX;
+        x<startX+maxX+GRID;
+        x+=GRID
+    ){
         ctx.beginPath();
-        ctx.moveTo(x,0);
-        ctx.lineTo(x,maxY);
+        ctx.moveTo(x,startY);
+        ctx.lineTo(x,startY+maxY+GRID);
         ctx.stroke();
     }
 
-    for(let y=0;y<maxY;y+=GRID){
+    for(
+        let y=startY;
+        y<startY+maxY+GRID;
+        y+=GRID
+    ){
         ctx.beginPath();
-        ctx.moveTo(0,y);
-        ctx.lineTo(maxX,y);
+        ctx.moveTo(startX,y);
+        ctx.lineTo(startX+maxX+GRID,y);
         ctx.stroke();
     }
 }
-
 function drawPointerGuides(){
 
     if(!pointer)
         return;
 
-    const x = pointer.x;
-    const y = pointer.y;
+    const screenX =
+        pointer.x * zoomLevel + offsetX;
+
+    const screenY =
+        pointer.y * zoomLevel + offsetY;
 
     ctx.save();
+
+    ctx.setTransform(1,0,0,1,0,0);
 
     ctx.setLineDash([6,4]);
     ctx.strokeStyle="#90a4ae";
     ctx.lineWidth=1;
 
     ctx.beginPath();
-    ctx.moveTo(x,0);
-    ctx.lineTo(x,canvas.height/zoomLevel);
+    ctx.moveTo(screenX,0);
+    ctx.lineTo(screenX,canvas.height);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(0,y);
-    ctx.lineTo(canvas.width/zoomLevel,y);
+    ctx.moveTo(0,screenY);
+    ctx.lineTo(canvas.width,screenY);
     ctx.stroke();
 
     ctx.setLineDash([]);
+
     ctx.fillStyle="#455a64";
-    ctx.font="12px Arial";
-    ctx.fillText(`x: ${x}`,Math.min(x+8,canvas.width-45),14);
-    ctx.fillText(`y: ${y}`,8,Math.max(y-8,14));
+    ctx.font=`${getAnnotationFontSize()}px Arial`;
+
+    ctx.fillText(
+        `x: ${pointer.x}`,
+        screenX + 8,
+        15
+    );
+
+    ctx.fillText(
+        `y: ${pointer.y}`,
+        8,
+        screenY - 8
+    );
 
     ctx.restore();
 }
-
 function drawVertex(point,color){
 
     const isHighlighted =
@@ -326,17 +387,18 @@ function getAngleBetween(v1,v2){
 function drawAnnotation(text,x,y,color){
 
     ctx.save();
-    ctx.font="12px Arial";
+    ctx.font=`${getAnnotationFontSize()}px Arial`;
     const paddingX = 4;
     const paddingY = 3;
     const width = ctx.measureText(text).width + paddingX*2;
-    const height = 16;
+    const height = getAnnotationFontSize() + paddingY*2;
 
     ctx.fillStyle="rgba(255,255,255,0.8)";
     ctx.fillRect(x - width/2,y - height/2,width,height);
 
     ctx.strokeStyle="rgba(120,120,120,0.5)";
     ctx.lineWidth=1;
+    ctx.lineWidth = 1 / zoomLevel;
     ctx.strokeRect(x - width/2,y - height/2,width,height);
 
     ctx.fillStyle=color || "#455a64";
@@ -587,7 +649,6 @@ function render(){
     ctx.translate(offsetX,offsetY);
     ctx.scale(zoomLevel,zoomLevel);
     drawGrid();
-    drawPointerGuides();
 
     Object.keys(layout)
         .forEach(type=>{
@@ -607,6 +668,8 @@ function render(){
     drawCurrent();
 
     ctx.restore();
+    drawPointerGuides();
+
 }
 
 render();
@@ -729,8 +792,42 @@ canvas.addEventListener("click",e=>{
         return;
     }
 
-    const pos = getWorldPosition(e,true);
+let pos =
+    getWorldPosition(e,false);
 
+const vertexSnap =
+    findVertex(pos.x,pos.y);
+
+if(vertexSnap){
+
+    pos={
+        x:vertexSnap.x,
+        y:vertexSnap.y
+    };
+}
+else{
+
+    const lineSnap =
+        findNearestLinePoint(
+            pos.x,
+            pos.y
+        );
+
+    if(lineSnap){
+
+        pos={
+            x:lineSnap.x,
+            y:lineSnap.y
+        };
+    }
+    else{
+
+        pos={
+            x:snap(pos.x),
+            y:snap(pos.y)
+        };
+    }
+}
     pushHistory();
 
     currentPolygon.push({
@@ -806,7 +903,77 @@ function getAllVertices(){
 
     return all;
 }
+function projectPointToSegment(p,a,b){
 
+    const abx = b.x-a.x;
+    const aby = b.y-a.y;
+
+    const lenSq =
+        abx*abx + aby*aby;
+
+    if(lenSq===0)
+        return null;
+
+    let t =
+        (
+            (p.x-a.x)*abx +
+            (p.y-a.y)*aby
+        ) / lenSq;
+
+    t=Math.max(0,Math.min(1,t));
+
+    return{
+        x:a.x + abx*t,
+        y:a.y + aby*t
+    };
+}
+function findNearestLinePoint(x,y){
+
+    let best=null;
+    let bestDist=Infinity;
+
+    for(const category of CATEGORIES){
+
+        for(const poly of layout[category] || []){
+
+            for(let i=0;i<poly.length;i++){
+
+                const a=poly[i];
+                const b=
+                    poly[(i+1)%poly.length];
+
+                const projected =
+                    projectPointToSegment(
+                        {x,y},
+                        a,
+                        b
+                    );
+
+                if(!projected)
+                    continue;
+
+                const dx=
+                    projected.x-x;
+
+                const dy=
+                    projected.y-y;
+
+                const dist=
+                    Math.sqrt(dx*dx+dy*dy);
+
+                if(
+                    dist<LINE_SNAP_DISTANCE &&
+                    dist<bestDist
+                ){
+                    bestDist=dist;
+                    best=projected;
+                }
+            }
+        }
+    }
+
+    return best;
+}
 function findVertex(x,y){
 
     let closest = null;
@@ -958,7 +1125,25 @@ canvas.addEventListener(
 document.addEventListener("keydown",e=>{
 
     const key = (e.key || "").toLowerCase();
+if(key === "escape"){
 
+    if(currentPolygon.length > 0){
+
+        pushHistory();
+
+        currentPolygon = [];
+        hoveredVertex = null;
+        dragging = null;
+        pointer = null;
+        mouseDownVertex = null;
+        didDragVertex = false;
+        suppressClick = false;
+
+        render();
+    }
+
+    return;
+}
     if((e.ctrlKey || e.metaKey) && key==="z"){
         e.preventDefault();
         undo();
@@ -994,16 +1179,59 @@ document.addEventListener("keydown",e=>{
     e.preventDefault();
     finishCurrentPolygon();
 });
-
 canvas.addEventListener("wheel",e=>{
 
     e.preventDefault();
 
-    const delta = e.deltaY < 0
-        ? ZOOM_STEP
-        : -ZOOM_STEP;
+    const rect =
+        canvas.getBoundingClientRect();
 
-    setZoom(zoomLevel + delta);
+    const mouseX =
+        e.clientX - rect.left;
+
+    const mouseY =
+        e.clientY - rect.top;
+
+    const worldX =
+        (mouseX - offsetX)
+        / zoomLevel;
+
+    const worldY =
+        (mouseY - offsetY)
+        / zoomLevel;
+
+    const nextZoom =
+        Math.max(
+            ZOOM_MIN,
+            Math.min(
+                ZOOM_MAX,
+                zoomLevel +
+                (
+                    e.deltaY < 0
+                    ? ZOOM_STEP
+                    : -ZOOM_STEP
+                )
+            )
+        );
+
+    offsetX =
+        mouseX -
+        worldX * nextZoom;
+
+    offsetY =
+        mouseY -
+        worldY * nextZoom;
+
+    zoomLevel =
+        nextZoom;
+
+    document
+        .getElementById("zoomLabel")
+        .textContent =
+        `Zoom: ${Math.round(zoomLevel*100)}%`;
+
+    render();
+
 },{passive:false});
 
 document.getElementById("undoBtn").onclick=()=>{
