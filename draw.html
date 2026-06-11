@@ -121,6 +121,8 @@ let pointer = null;
 let hoveredVertex = null;
 let dragging = null;
 let suppressClick = false;
+let mouseDownVertex = null;
+let didDragVertex = false;
 
 const PICK_RADIUS = 12;
 
@@ -346,6 +348,26 @@ canvas.addEventListener("click",e=>{
     if(dragging)
         return;
 
+    if(mouseDownVertex && !didDragVertex){
+
+        currentPolygon.push({
+            x: mouseDownVertex.x,
+            y: mouseDownVertex.y
+        });
+
+        mouseDownVertex = null;
+        suppressClick = false;
+        render();
+        return;
+    }
+
+    if(didDragVertex){
+        mouseDownVertex = null;
+        didDragVertex = false;
+        suppressClick = false;
+        return;
+    }
+
     if(suppressClick){
         suppressClick=false;
         return;
@@ -363,6 +385,9 @@ canvas.addEventListener("click",e=>{
     );
 
     currentPolygon.push({x,y});
+
+    mouseDownVertex = null;
+    didDragVertex = false;
 
     render();
 });
@@ -457,6 +482,8 @@ e=>{
         e.offsetY
       );
 
+        mouseDownVertex = dragging;
+        didDragVertex = false;
         hoveredVertex = dragging;
         suppressClick = !!dragging;
 
@@ -482,11 +509,21 @@ e=>{
         return;
     }
 
+        const nextX = snap(e.offsetX);
+        const nextY = snap(e.offsetY);
+
+        if(
+                dragging.x!==nextX ||
+                dragging.y!==nextY
+        ){
+                didDragVertex = true;
+        }
+
     dragging.x=
-      snap(e.offsetX);
+            nextX;
 
     dragging.y=
-      snap(e.offsetY);
+            nextY;
 
     render();
 });
@@ -495,13 +532,14 @@ canvas.addEventListener(
 "mouseup",
 ()=>{
     dragging=null;
-    suppressClick=false;
 });
 
 canvas.addEventListener(
 "mouseleave",
 ()=>{
     dragging=null;
+    mouseDownVertex=null;
+    didDragVertex=false;
     hoveredVertex=null;
     pointer=null;
     render();
