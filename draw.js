@@ -1,7 +1,9 @@
 const GRID = 10;
 const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 4;
-const ZOOM_STEP = 0.1;
+const ZOOM_MAX = 10;
+const ZOOM_STEP = 0.2;
+const DEFAULT_ZOOM_LEVEL = 1;
+
 const HISTORY_LIMIT = 200;
 
 const CATEGORY_COLORS = {
@@ -59,7 +61,7 @@ let dragging = null;
 let suppressClick = false;
 let mouseDownVertex = null;
 let didDragVertex = false;
-let zoomLevel = 1;
+let zoomLevel = DEFAULT_ZOOM_LEVEL;
 let dragStartSnapshot = null;
 let offsetX = 0;
 let offsetY = 0;
@@ -725,7 +727,7 @@ function goHome(){
 
     offsetX = 200;
     offsetY = -200;
-
+    zoomLevel = DEFAULT_ZOOM_LEVEL;
 
     document.getElementById("zoomLabel")
         .textContent = `Zoom: 100%`;
@@ -1239,7 +1241,7 @@ document.getElementById("zoomOutBtn").onclick=()=>{
 };
 
 document.getElementById("zoomResetBtn").onclick=()=>{
-    setZoom(1);
+    setZoom(DEFAULT_ZOOM_LEVEL);
 };
 
 document.getElementById("homeBtn").onclick = ()=>{
@@ -1330,4 +1332,117 @@ document
         a.remove();
         URL.revokeObjectURL(url);
 };
+document.getElementById("loadBtn").onclick = () => {
+    document.getElementById("fileInput").click();
+};
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+    try {
+        const file = e.target.files[0];
+        if (!file) return;
 
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        console.log("LOADED JSON:", data);
+
+        loadFromJSON(data);
+
+    } catch (err) {
+        console.error("LOAD FAILED:", err);
+        alert("Load failed: check console");
+    }
+});
+
+function parseWKTMultipolygon(wkt) {
+    if (!wkt || typeof wkt !== "string") return [];
+    if (wkt.includes("EMPTY")) return [];
+
+    const polygons = [];
+
+    // Extract everything inside MULTIPOLYGON(...)
+    const inner = wkt
+        .replace("MULTIPOLYGON", "")
+        .trim()
+        .replace(/^\(/, "")
+        .replace(/\)$/, "");
+
+    // Match each polygon block safely
+    const matches = inner.match(/\(\([^\)]+\)\)/g);
+    if (!matches) {
+        console.warn("No polygons parsed from:", wkt);
+        return [];
+    }
+
+    for (const m of matches) {
+        const clean = m
+            .replace(/\(\(/g, "")
+            .replace(/\)\)/g, "");
+
+        const points = clean.split(",").map(pair => {
+            const parts = pair.trim().split(" ");
+
+            if (parts.length < 2) {
+                console.warn("Bad point:", pair);
+                return null;
+            }
+
+            const x = Number(parts[0]);
+            const y = Number(parts[1]);
+
+            if (Number.isNaN(x) || Number.isNaN(y)) {
+                console.warn("NaN point:", pair);
+                return null;
+            }
+
+            return {
+                x,
+                y: EXPORT_HEIGHT - y
+            };
+        }).filter(Boolean);
+
+        if (points.length >= 3) {
+            polygons.push(points);
+        }
+    }
+
+    return polygons;
+}function loadFromJSON(data) {
+    console.log("Applying layout...");
+
+    pushHistory();
+
+    // reset
+    for (const c of CATEGORIES) {
+        layout[c] = [];
+    }
+
+    for (const key in data) {
+        console.log("Processing:", key, data[key]);
+
+        if (key === "id") {
+            layout.id = data.id;
+            continue;
+        }
+
+        if (key === "wall_depth") {
+            layout.wall_depth = data.wall_depth;
+            continue;
+        }
+
+        if (!CATEGORY_COLORS[key]) continue;
+
+        const parsed = parseWKTMultipolygon(data[key]);
+
+        console.log(key, "parsed polygons:", parsed.length);
+
+        layout[key] = parsed;
+    }
+
+    currentPolygon = [];
+    selectedPolygon = null;
+    hoveredVertex = null;
+
+    render();
+
+    console.log("LOAD COMPLETE");
+}
