@@ -254,6 +254,190 @@ const colors = {
     window:"#ff9800"
 };
 
+function getDistance(a,b){
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    return Math.sqrt(dx*dx + dy*dy);
+}
+
+function getAngleBetween(v1,v2){
+
+    const mag1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
+    const mag2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
+
+    if(mag1===0 || mag2===0)
+        return null;
+
+    const dot = v1.x*v2.x + v1.y*v2.y;
+    const cosTheta = Math.max(-1,Math.min(1,dot/(mag1*mag2)));
+    return Math.acos(cosTheta) * 180 / Math.PI;
+}
+
+function drawAnnotation(text,x,y,color){
+
+    ctx.save();
+    ctx.font="12px Arial";
+    const paddingX = 4;
+    const paddingY = 3;
+    const width = ctx.measureText(text).width + paddingX*2;
+    const height = 16;
+
+    ctx.fillStyle="rgba(255,255,255,0.8)";
+    ctx.fillRect(x - width/2,y - height/2,width,height);
+
+    ctx.strokeStyle="rgba(120,120,120,0.5)";
+    ctx.lineWidth=1;
+    ctx.strokeRect(x - width/2,y - height/2,width,height);
+
+    ctx.fillStyle=color || "#455a64";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(text,x,y+0.5);
+
+    ctx.restore();
+}
+
+function drawSegmentLength(a,b,color){
+
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const mag = Math.sqrt(dx*dx + dy*dy) || 1;
+
+    const offsetX = -dy / mag * 12;
+    const offsetY = dx / mag * 12;
+
+    drawAnnotation(
+        `${getDistance(a,b).toFixed(1)} px`,
+        mx + offsetX,
+        my + offsetY,
+        color
+    );
+}
+
+function drawVertexAngle(prev,curr,next,color){
+
+    const v1 = {
+        x: prev.x - curr.x,
+        y: prev.y - curr.y
+    };
+
+    const v2 = {
+        x: next.x - curr.x,
+        y: next.y - curr.y
+    };
+
+    const angle = getAngleBetween(v1,v2);
+
+    if(angle===null)
+        return;
+
+    drawAnnotation(
+        `${angle.toFixed(1)}°`,
+        curr.x,
+        curr.y - 18,
+        color
+    );
+}
+
+function drawClosedPolygonAnnotations(points,color){
+
+    if(points.length < 2)
+        return;
+
+    for(let i=0;i<points.length;i++){
+
+        const a = points[i];
+        const b = points[(i+1)%points.length];
+        drawSegmentLength(a,b,color);
+    }
+
+    if(points.length < 3)
+        return;
+
+    for(let i=0;i<points.length;i++){
+
+        const prev = points[(i-1+points.length)%points.length];
+        const curr = points[i];
+        const next = points[(i+1)%points.length];
+
+        drawVertexAngle(prev,curr,next,color);
+    }
+}
+
+function drawOpenPolylineAnnotations(points,color){
+
+    if(points.length < 2)
+        return;
+
+    for(let i=0;i<points.length-1;i++){
+
+        drawSegmentLength(
+            points[i],
+            points[i+1],
+            color
+        );
+    }
+
+    if(points.length < 3)
+        return;
+
+    for(let i=1;i<points.length-1;i++){
+        drawVertexAngle(
+            points[i-1],
+            points[i],
+            points[i+1],
+            color
+        );
+    }
+}
+
+function drawPreviewFromLastPoint(){
+
+    if(!pointer || currentPolygon.length===0)
+        return;
+
+    const last = currentPolygon[currentPolygon.length-1];
+
+    ctx.save();
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle="#9e9e9e";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(last.x,last.y);
+    ctx.lineTo(pointer.x,pointer.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle="rgba(117,117,117,0.5)";
+    ctx.beginPath();
+    ctx.arc(pointer.x,pointer.y,5,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    drawSegmentLength(last,pointer,"#616161");
+
+    if(currentPolygon.length>=2){
+        const prev = currentPolygon[currentPolygon.length-2];
+        drawVertexAngle(prev,last,pointer,"#616161");
+    }else{
+
+        const absolute =
+            Math.atan2(
+                pointer.y - last.y,
+                pointer.x - last.x
+            ) * 180 / Math.PI;
+
+        drawAnnotation(
+            `${absolute.toFixed(1)}°`,
+            last.x,
+            last.y - 18,
+            "#616161"
+        );
+    }
+}
+
 function drawPolygon(points,color){
 
     if(points.length===0)
@@ -281,6 +465,7 @@ function drawPolygon(points,color){
     ctx.stroke();
 
     points.forEach(p=> drawVertex(p,color));
+    drawClosedPolygonAnnotations(points,"#37474f");
 }
 
 function drawCurrent(){
@@ -309,6 +494,8 @@ function drawCurrent(){
     ctx.stroke();
 
     currentPolygon.forEach(p=> drawVertex(p,"red"));
+    drawOpenPolylineAnnotations(currentPolygon,"#37474f");
+    drawPreviewFromLastPoint();
 }
 
 function render(){
