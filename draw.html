@@ -168,7 +168,7 @@ const layout = {
     id: 14433,
     wall_depth: 4.5
 };
-
+const EXPORT_HEIGHT = canvas.height;
 let currentType = "bedroom";
 let currentPolygon = [];
 let selectedPolygon = null;
@@ -293,6 +293,7 @@ function drawGrid(){
         ctx.stroke();
     }
 }
+
 function drawPointerGuides(){
 
     if(!pointer)
@@ -334,7 +335,7 @@ function drawPointerGuides(){
     );
 
     ctx.fillText(
-        `y: ${pointer.y}`,
+        `y: ${canvas.height-pointer.y}`,
         8,
         screenY - 8
     );
@@ -1339,7 +1340,7 @@ function polygonToWKT(points){
       [...points,points[0]]
       .map(
         p =>
-        `${p.x} ${p.y}`
+        `${p.x} ${EXPORT_HEIGHT-p.y}`
       )
       .join(",");
 
