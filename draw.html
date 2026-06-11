@@ -91,6 +91,7 @@ textarea{
 <button id="undoBtn">Undo (Ctrl/Cmd+Z)</button>
 
 <div class="row">
+<button id="homeBtn">🏠</button>
 <button id="zoomOutBtn">Zoom -</button>
 <button id="zoomResetBtn">100%</button>
 <button id="zoomInBtn">Zoom +</button>
@@ -196,7 +197,7 @@ function getAnnotationFontSize(){
     // shrinks slightly when zooming in
     const size = 8 / Math.sqrt(zoomLevel);
 
-    return Math.max(8, Math.min(14, size));
+    return Math.max(8, Math.min(1, size));
 }
 for(const category of CATEGORIES){
     const button = document.createElement("button");
@@ -324,7 +325,7 @@ function drawPointerGuides(){
     ctx.setLineDash([]);
 
     ctx.fillStyle="#455a64";
-    ctx.font=`${getAnnotationFontSize()}px Arial`;
+    ctx.font=`${8+getAnnotationFontSize()}px Arial`;
 
     ctx.fillText(
         `x: ${pointer.x}`,
@@ -805,6 +806,18 @@ function setZoom(nextZoom){
     render();
 }
 
+function goHome(){
+
+    offsetX = 0;
+    offsetY = 0;
+
+    zoomLevel = 1;
+
+    document.getElementById("zoomLabel")
+        .textContent = `Zoom: 100%`;
+
+    render();
+}
 canvas.addEventListener("click",e=>{
 
     if(dragging)
@@ -1314,6 +1327,10 @@ document.getElementById("zoomOutBtn").onclick=()=>{
 
 document.getElementById("zoomResetBtn").onclick=()=>{
     setZoom(1);
+};
+
+document.getElementById("homeBtn").onclick = ()=>{
+    goHome();
 };
 
 function polygonToWKT(points){
