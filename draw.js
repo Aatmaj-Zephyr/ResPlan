@@ -1,8 +1,8 @@
 const GRID = 10;
 const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 10;
-const ZOOM_STEP = 0.2;
-const DEFAULT_ZOOM_LEVEL = 1;
+const ZOOM_MAX = 50;
+const ZOOM_STEP = 1;
+const DEFAULT_ZOOM_LEVEL = 5;
 
 const HISTORY_LIMIT = 200;
 
@@ -70,16 +70,15 @@ let isPanning = false;
 let panStart = null;
 const historyStack = [];
 
-const PICK_RADIUS = 12;
-const LINE_SNAP_DISTANCE = 12;
+const PICK_RADIUS = 5;
+const LINE_SNAP_DISTANCE = 5;
 const categoryButtonsHost = document.getElementById("categoryButtons");
 const buttons = {};
 function getAnnotationFontSize(){
-    // base size 12px at normal zoom
-    // shrinks slightly when zooming in
-    const size = 8 / Math.sqrt(zoomLevel);
+   
+    const size = 5 / Math.sqrt(zoomLevel);
 
-    return Math.max(8, Math.min(1, size));
+    return  size ;
 }
 for(const category of CATEGORIES){
     const button = document.createElement("button");
@@ -205,7 +204,7 @@ function drawAxes(){
     // origin marker
     ctx.fillStyle = "#000";
     ctx.beginPath();
-    ctx.arc(0, canvas.height, 4 / zoomLevel, 0, Math.PI * 2);
+    ctx.arc(0, canvas.height, 5 / zoomLevel, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -242,7 +241,7 @@ function drawPointerGuides(){
     ctx.setLineDash([]);
 
     ctx.fillStyle="#455a64";
-    ctx.font=`${8+getAnnotationFontSize()}px Arial`;
+    ctx.font=`${10+getAnnotationFontSize()}px Arial`;
 
     ctx.fillText(
         `x: ${pointer.x}`,
@@ -266,20 +265,20 @@ function drawVertex(point,color){
 
     ctx.fillStyle=color;
     ctx.beginPath();
-    ctx.arc(point.x,point.y,5,0,Math.PI*2);
+    ctx.arc(point.x,point.y,8/Math.sqrt(zoomLevel),0,Math.PI*2);
     ctx.fill();
 
     if(isHighlighted){
         ctx.strokeStyle="#ffffff";
         ctx.lineWidth=2;
         ctx.beginPath();
-        ctx.arc(point.x,point.y,8,0,Math.PI*2);
+        ctx.arc(point.x,point.y,10/Math.sqrt(zoomLevel),0,Math.PI*2);
         ctx.stroke();
 
         ctx.strokeStyle="#d32f2f";
         ctx.lineWidth=2;
         ctx.beginPath();
-        ctx.arc(point.x,point.y,10,0,Math.PI*2);
+        ctx.arc(point.x,point.y,12/Math.sqrt(zoomLevel),0,Math.PI*2);
         ctx.stroke();
     }
 }
@@ -445,7 +444,7 @@ function drawPreviewFromLastPoint(){
 
     ctx.fillStyle="rgba(117,117,117,0.5)";
     ctx.beginPath();
-    ctx.arc(pointer.x,pointer.y,5,0,Math.PI*2);
+    ctx.arc(pointer.x,pointer.y,10/Math.sqrt(zoomLevel),0,Math.PI*2);
     ctx.fill();
     ctx.restore();
 
@@ -724,10 +723,10 @@ function setZoom(nextZoom){
 }
 
 function goHome(){
-
-    offsetX = 200;
-    offsetY = -200;
     zoomLevel = DEFAULT_ZOOM_LEVEL;
+
+    offsetX = (40 * zoomLevel);
+    offsetY = -(EXPORT_HEIGHT-150 )* zoomLevel;
 
     document.getElementById("zoomLabel")
         .textContent = `Zoom: 100%`;
@@ -957,7 +956,7 @@ function findVertex(x,y){
         const dy = vertex.y - y;
         const dist = Math.sqrt(dx*dx+dy*dy);
 
-        if(dist < PICK_RADIUS && dist < minDist){
+        if(dist < PICK_RADIUS/Math.sqrt(zoomLevel) && dist < minDist){
             minDist = dist;
             closest = vertex;
         }
