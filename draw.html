@@ -1367,11 +1367,23 @@ document
     const result = {
 
         ...Object.fromEntries(
-            CATEGORIES.map(category => [
-                category,
-                multipolygonToWKT(layout[category])
-            ])
-        ),
+    CATEGORIES
+        .map(category => {
+
+            const wkt =
+                multipolygonToWKT(layout[category]);
+
+            const hasData =
+                layout[category] &&
+                layout[category].length > 0;
+
+            if(!hasData)
+                return null;
+
+            return [category, wkt];
+        })
+        .filter(Boolean)
+),
 
         id: layout.id,
 
