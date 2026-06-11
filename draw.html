@@ -1,0 +1,509 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Floor Plan WKT Editor</title>
+
+<style>
+body{
+    margin:0;
+    font-family:Arial,sans-serif;
+    display:flex;
+    height:100vh;
+}
+
+#left{
+    width:260px;
+    border-right:1px solid #ccc;
+    padding:10px;
+    box-sizing:border-box;
+    overflow:auto;
+}
+
+#right{
+    flex:1;
+    position:relative;
+}
+
+canvas{
+    background:#fafafa;
+    display:block;
+}
+
+button{
+    width:100%;
+    padding:10px;
+    margin-bottom:6px;
+    cursor:pointer;
+}
+
+button.active{
+    background:#1976d2;
+    color:white;
+}
+
+textarea{
+    width:100%;
+    height:260px;
+    box-sizing:border-box;
+    margin-top:10px;
+}
+
+.info{
+    margin:8px 0;
+    font-size:13px;
+    color:#555;
+}
+</style>
+</head>
+
+<body>
+
+<div id="left">
+
+<h3>Floor Editor</h3>
+
+<button id="bedroomBtn">Bedroom</button>
+<button id="wallBtn">Wall</button>
+<button id="doorBtn">Door</button>
+<button id="windowBtn">Window</button>
+
+<hr>
+
+<button id="finishBtn">Finish Polygon</button>
+<button id="exportBtn">Export JSON</button>
+<button id="clearBtn">Clear All</button>
+
+<div class="info">
+Click to add points.<br>
+Drag vertices to edit.<br>
+Finish Polygon when done.
+</div>
+
+<textarea id="output"></textarea>
+
+</div>
+
+<div id="right">
+<canvas id="canvas"></canvas>
+</div>
+
+<script>
+
+const GRID = 10;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width =
+        window.innerWidth - 260;
+
+    canvas.height =
+        window.innerHeight;
+}
+resize();
+window.addEventListener("resize",resize);
+
+const layout = {
+    bedroom: [],
+    wall: [],
+    door: [],
+    window: [],
+    id: 14433,
+    wall_depth: 4.5
+};
+
+let currentType = "bedroom";
+let currentPolygon = [];
+
+const buttons = {
+    bedroom: document.getElementById("bedroomBtn"),
+    wall: document.getElementById("wallBtn"),
+    door: document.getElementById("doorBtn"),
+    window: document.getElementById("windowBtn")
+};
+
+function updateButtons(){
+
+    Object.values(buttons)
+        .forEach(b => b.classList.remove("active"));
+
+    buttons[currentType]
+        .classList.add("active");
+}
+
+updateButtons();
+
+buttons.bedroom.onclick=()=>{
+    currentType="bedroom";
+    updateButtons();
+};
+
+buttons.wall.onclick=()=>{
+    currentType="wall";
+    updateButtons();
+};
+
+buttons.door.onclick=()=>{
+    currentType="door";
+    updateButtons();
+};
+
+buttons.window.onclick=()=>{
+    currentType="window";
+    updateButtons();
+};
+
+function snap(v){
+    return Math.round(v / GRID) * GRID;
+}
+
+function drawGrid(){
+
+    ctx.strokeStyle="#eee";
+    ctx.lineWidth=1;
+
+    for(let x=0;x<canvas.width;x+=GRID){
+        ctx.beginPath();
+        ctx.moveTo(x,0);
+        ctx.lineTo(x,canvas.height);
+        ctx.stroke();
+    }
+
+    for(let y=0;y<canvas.height;y+=GRID){
+        ctx.beginPath();
+        ctx.moveTo(0,y);
+        ctx.lineTo(canvas.width,y);
+        ctx.stroke();
+    }
+}
+
+const colors = {
+    bedroom:"#2196f3",
+    wall:"#000000",
+    door:"#4caf50",
+    window:"#ff9800"
+};
+
+function drawPolygon(points,color){
+
+    if(points.length===0)
+        return;
+
+    ctx.strokeStyle=color;
+    ctx.lineWidth=2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        points[0].x,
+        points[0].y
+    );
+
+    for(let i=1;i<points.length;i++){
+
+        ctx.lineTo(
+            points[i].x,
+            points[i].y
+        );
+    }
+
+    ctx.closePath();
+    ctx.stroke();
+
+    points.forEach(p=>{
+
+        ctx.fillStyle=color;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            5,
+            0,
+            Math.PI*2
+        );
+
+        ctx.fill();
+    });
+}
+
+function drawCurrent(){
+
+    if(currentPolygon.length===0)
+        return;
+
+    ctx.strokeStyle="red";
+    ctx.lineWidth=2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        currentPolygon[0].x,
+        currentPolygon[0].y
+    );
+
+    for(let i=1;i<currentPolygon.length;i++){
+
+        ctx.lineTo(
+            currentPolygon[i].x,
+            currentPolygon[i].y
+        );
+    }
+
+    ctx.stroke();
+
+    currentPolygon.forEach(p=>{
+
+        ctx.fillStyle="red";
+
+        ctx.beginPath();
+        ctx.arc(
+            p.x,
+            p.y,
+            5,
+            0,
+            Math.PI*2
+        );
+        ctx.fill();
+    });
+}
+
+function render(){
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    drawGrid();
+
+    Object.keys(layout)
+        .forEach(type=>{
+
+        if(!Array.isArray(layout[type]))
+            return;
+
+        layout[type].forEach(poly=>{
+
+            drawPolygon(
+                poly,
+                colors[type]
+            );
+        });
+    });
+
+    drawCurrent();
+}
+
+render();
+
+canvas.addEventListener("click",e=>{
+
+    if(dragging)
+        return;
+
+    const rect =
+        canvas.getBoundingClientRect();
+
+    const x = snap(
+        e.clientX - rect.left
+    );
+
+    const y = snap(
+        e.clientY - rect.top
+    );
+
+    currentPolygon.push({x,y});
+
+    render();
+});
+
+document
+.getElementById("finishBtn")
+.onclick=()=>{
+
+    if(currentPolygon.length<3)
+        return;
+
+    layout[currentType]
+        .push(
+            JSON.parse(
+                JSON.stringify(
+                    currentPolygon
+                )
+            )
+        );
+
+    currentPolygon=[];
+
+    render();
+};
+
+document
+.getElementById("clearBtn")
+.onclick=()=>{
+
+    layout.bedroom=[];
+    layout.wall=[];
+    layout.door=[];
+    layout.window=[];
+
+    currentPolygon=[];
+
+    render();
+};
+
+let dragging = null;
+
+function findVertex(x,y){
+
+    const allTypes=[
+        "bedroom",
+        "wall",
+        "door",
+        "window"
+    ];
+
+    for(const type of allTypes){
+
+        for(const poly of layout[type]){
+
+            for(const vertex of poly){
+
+                const dx=
+                    vertex.x-x;
+
+                const dy=
+                    vertex.y-y;
+
+                if(
+                    Math.sqrt(
+                        dx*dx+dy*dy
+                    )<10
+                ){
+                    return vertex;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+canvas.addEventListener(
+"mousedown",
+e=>{
+
+    dragging=
+      findVertex(
+        e.offsetX,
+        e.offsetY
+      );
+});
+
+canvas.addEventListener(
+"mousemove",
+e=>{
+
+    if(!dragging)
+        return;
+
+    dragging.x=
+      snap(e.offsetX);
+
+    dragging.y=
+      snap(e.offsetY);
+
+    render();
+});
+
+canvas.addEventListener(
+"mouseup",
+()=>{
+    dragging=null;
+});
+
+canvas.addEventListener(
+"mouseleave",
+()=>{
+    dragging=null;
+});
+
+function polygonToWKT(points){
+
+    const coords =
+      [...points,points[0]]
+      .map(
+        p =>
+        `${p.x} ${p.y}`
+      )
+      .join(",");
+
+    return `((${coords}))`;
+}
+
+function multipolygonToWKT(polys){
+
+    if(polys.length===0)
+        return "MULTIPOLYGON EMPTY";
+
+    return `MULTIPOLYGON (${polys
+        .map(
+            p =>
+            polygonToWKT(p)
+        )
+        .join(",")})`;
+}
+
+document
+.getElementById("exportBtn")
+.onclick=()=>{
+
+    const result = {
+
+        bedroom:
+            multipolygonToWKT(
+                layout.bedroom
+            ),
+
+        wall:
+            multipolygonToWKT(
+                layout.wall
+            ),
+
+        door:
+            multipolygonToWKT(
+                layout.door
+            ),
+
+        window:
+            multipolygonToWKT(
+                layout.window
+            ),
+
+        id: layout.id,
+
+        wall_depth:
+            layout.wall_depth
+    };
+
+    document
+      .getElementById("output")
+      .value =
+        JSON.stringify(
+            result,
+            null,
+            2
+        );
+};
+
+</script>
+</body>
+</html>
+```
