@@ -1374,6 +1374,56 @@ document
 document.getElementById("loadBtn").onclick = () => {
     document.getElementById("fileInput").click();
 };
+const loadBtn =
+    document.getElementById("loadBtn");
+
+loadBtn.addEventListener("dragover", e => {
+
+    e.preventDefault();
+
+    loadBtn.classList.add("drag-over");
+});
+
+loadBtn.addEventListener("dragleave", () => {
+
+    loadBtn.classList.remove("drag-over");
+});
+
+loadBtn.addEventListener("drop", async e => {
+
+    e.preventDefault();
+
+    loadBtn.classList.remove("drag-over");
+
+    const file =
+        e.dataTransfer.files[0];
+
+    if(!file)
+        return;
+
+    try{
+
+        const text =
+            await file.text();
+
+        document
+            .getElementById("output")
+            .value = text;
+
+        const data =
+            JSON.parse(text);
+
+        loadFromJSON(data);
+
+    }catch(err){
+
+        console.error(err);
+
+        alert(
+            "Invalid JSON file"
+        );
+    }
+});
 document.getElementById("fileInput").addEventListener("change", async (e) => {
     try {
         const file = e.target.files[0];
