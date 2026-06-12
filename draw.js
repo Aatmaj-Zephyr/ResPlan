@@ -1,9 +1,9 @@
-const GRID = 10;
+
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 50;
 const ZOOM_STEP = 0.5;
 const DEFAULT_ZOOM_LEVEL = 5;
-
+let GRID = 10;
 const HISTORY_LIMIT = 200;
 
 const CATEGORY_COLORS = {
@@ -22,6 +22,7 @@ const CATEGORY_COLORS = {
 
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 let SHOW_ANNOTATIONS = true;
+let SNAP_TO_GRID = true;
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -108,25 +109,15 @@ for(const category of CATEGORIES){
         updateButtons();
     };
 }
-
 function getSnapSize(){
-
-    if(zoomLevel >= 3)
-        return 1;
-
-    if(zoomLevel >= 2)
-        return 2;
-
-    if(zoomLevel >= 1.5)
-        return 5;
-
-    return 10;
+    return getGridSize();
 }
 function getGridSize(){
-    return GRID;
+return GRID;
 }
 function snap(v){
-
+  if(!SNAP_TO_GRID)
+        return v;
     const snapSize =
         getSnapSize();
 
@@ -143,36 +134,36 @@ function drawGrid(){
 
     const startX =
         Math.floor(
-            (-offsetX / zoomLevel) / GRID
-        ) * GRID;
+            (-offsetX / zoomLevel) /getGridSize()
+        ) *getGridSize();
 
     const startY =
         Math.floor(
-            (-offsetY / zoomLevel) / GRID
-        ) * GRID;
+            (-offsetY / zoomLevel) /getGridSize()
+        ) *getGridSize();
 
     ctx.strokeStyle="#eee";
     ctx.lineWidth=1/zoomLevel;
 
     for(
         let x=startX;
-        x<startX+maxX+GRID;
-        x+=GRID
+        x<startX+maxX+getGridSize();
+        x+=getGridSize()
     ){
         ctx.beginPath();
         ctx.moveTo(x,startY);
-        ctx.lineTo(x,startY+maxY+GRID);
+        ctx.lineTo(x,startY+maxY+getGridSize());
         ctx.stroke();
     }
 
     for(
         let y=startY;
-        y<startY+maxY+GRID;
-        y+=GRID
+        y<startY+maxY+getGridSize();
+        y+=getGridSize()
     ){
         ctx.beginPath();
         ctx.moveTo(startX,y);
-        ctx.lineTo(startX+maxX+GRID,y);
+        ctx.lineTo(startX+maxX+getGridSize(),y);
         ctx.stroke();
     }
 }
@@ -267,20 +258,20 @@ function drawVertex(point,color){
 
     ctx.fillStyle=color;
     ctx.beginPath();
-    ctx.arc(point.x,point.y,8/Math.sqrt(zoomLevel),0,Math.PI*2);
+    ctx.arc(point.x,point.y,5/Math.sqrt(zoomLevel),0,Math.PI*2); // dot placed at point
     ctx.fill();
 
     if(isHighlighted){
         ctx.strokeStyle="#ffffff";
-        ctx.lineWidth=2;
+        ctx.lineWidth=1;
         ctx.beginPath();
-        ctx.arc(point.x,point.y,10/Math.sqrt(zoomLevel),0,Math.PI*2);
+        ctx.arc(point.x,point.y,10/Math.sqrt(zoomLevel),0,Math.PI*2); // grey circle
         ctx.stroke();
 
         ctx.strokeStyle="#d32f2f";
-        ctx.lineWidth=2;
+        ctx.lineWidth=1;
         ctx.beginPath();
-        ctx.arc(point.x,point.y,12/Math.sqrt(zoomLevel),0,Math.PI*2);
+        ctx.arc(point.x,point.y,12/Math.sqrt(zoomLevel),0,Math.PI*2); // red hollow circle
         ctx.stroke();
     }
 }
@@ -495,7 +486,7 @@ const isSelected =
 
     ctx.strokeStyle=color;
     ctx.strokeStyle = isSelected ? "#ff3b30" : color;
-    ctx.lineWidth=2;
+    ctx.lineWidth=1;
 
     ctx.beginPath();
 
@@ -541,7 +532,7 @@ function drawCurrent(){
         return;
 
     ctx.strokeStyle="red";
-    ctx.lineWidth=2;
+    ctx.lineWidth=1;
 
     ctx.beginPath();
 
@@ -742,7 +733,22 @@ function goHome(){
     render();
 }
 goHome()
+const gridSizeSelect =
+    document.getElementById("gridSizeSelect");
 
+gridSizeSelect.value = GRID;
+
+gridSizeSelect.addEventListener(
+    "change",
+    () => {
+
+        GRID = Number(
+            gridSizeSelect.value
+        );
+
+        render();
+    }
+);
 canvas.addEventListener("click",e=>{
 
     if(dragging)
@@ -777,6 +783,10 @@ canvas.addEventListener("click",e=>{
 
 let pos =
     getWorldPosition(e,false);
+pos = {
+    x: snap(pos.x),
+    y: snap(pos.y)
+};
 
 const vertexSnap =
     findVertex(pos.x,pos.y);
@@ -787,29 +797,6 @@ if(vertexSnap){
         x:vertexSnap.x,
         y:vertexSnap.y
     };
-}
-else{
-
-    const lineSnap =
-        findNearestLinePoint(
-            pos.x,
-            pos.y
-        );
-
-    if(lineSnap){
-
-        pos={
-            x:lineSnap.x,
-            y:lineSnap.y
-        };
-    }
-    else{
-
-        pos={
-            x:snap(pos.x),
-            y:snap(pos.y)
-        };
-    }
 }
     pushHistory();
 
@@ -851,7 +838,16 @@ document.getElementById("toggleAnnotationsBtn").onclick = () => {
     SHOW_ANNOTATIONS = !SHOW_ANNOTATIONS;
     render();
 };
+document.getElementById("toggleSnapBtn").onclick = () => {
 
+    SNAP_TO_GRID = !SNAP_TO_GRID;
+
+    document.getElementById("toggleSnapBtn")
+        .textContent =
+        `Snap: ${SNAP_TO_GRID ? "ON" : "OFF"}`;
+
+    render();
+};
  
 document
 .getElementById("clearBtn")
@@ -945,9 +941,12 @@ function findNearestLinePoint(x,y){
                 const dist=
                     Math.sqrt(dx*dx+dy*dy);
 
+                const effectiveDistance =
+                LINE_SNAP_DISTANCE / zoomLevel;
+
                 if(
-                    dist<LINE_SNAP_DISTANCE &&
-                    dist<bestDist
+                    dist < effectiveDistance &&
+                    dist < bestDist
                 ){
                     bestDist=dist;
                     best=projected;
@@ -969,7 +968,8 @@ function findVertex(x,y){
         const dy = vertex.y - y;
         const dist = Math.sqrt(dx*dx+dy*dy);
 
-        if(dist < PICK_RADIUS && dist < minDist){
+        
+        if (dist < PICK_RADIUS && dist < minDist) {
             minDist = dist;
             closest = vertex;
         }
