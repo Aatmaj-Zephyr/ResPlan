@@ -58,6 +58,7 @@ let currentType = "bedroom";
 let currentPolygon = [];
 let selectedPolygon = null;
 let selectedCategory = null;
+let updatingOutputBox = false;
 let pointer = null;
 let hoveredVertex = null;
 let dragging = null;
@@ -1303,6 +1304,7 @@ function updateOutputBox(){
         wall_depth:
             layout.wall_depth
     };
+updatingOutputBox = true;
 
     document
         .getElementById("output")
@@ -1312,6 +1314,7 @@ function updateOutputBox(){
             null,
             2
         );
+    updatingOutputBox = false;
 }
 document
 .getElementById("exportBtn")
@@ -1443,6 +1446,31 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
         alert("Load failed: check console");
     }
 });
+const outputBox =
+    document.getElementById("output");
+
+outputBox.addEventListener(
+    "input",
+    () => {
+
+        if(updatingOutputBox)
+            return;
+
+        try{
+
+            const data =
+                JSON.parse(
+                    outputBox.value
+                );
+
+            loadFromJSON(data);
+
+        }catch(err){
+
+            // Ignore while user is typing
+        }
+    }
+);
 function parseWKT(wkt) {
     if (!wkt || typeof wkt !== "string") return [];
     if (wkt.includes("EMPTY")) return [];
