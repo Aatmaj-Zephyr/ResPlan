@@ -829,6 +829,7 @@ function finishCurrentPolygon(){
 
     currentPolygon=[];
     hoveredVertex=null;
+updateOutputBox();
 
     render();
 }
@@ -1164,6 +1165,7 @@ if(isDeleteKey){
         arr.splice(selectedPolygon.index,1);
 
         selectedPolygon = null;
+        updateOutputBox();
 
         render();
     }
@@ -1273,7 +1275,44 @@ function multipolygonToWKT(polys){
         )
         .join(",")})`;
 }
+function updateOutputBox(){
 
+    const result = {
+
+        ...Object.fromEntries(
+            CATEGORIES
+                .map(category => {
+
+                    const wkt =
+                        multipolygonToWKT(layout[category]);
+
+                    const hasData =
+                        layout[category] &&
+                        layout[category].length > 0;
+
+                    if(!hasData)
+                        return null;
+
+                    return [category, wkt];
+                })
+                .filter(Boolean)
+        ),
+
+        id: layout.id,
+
+        wall_depth:
+            layout.wall_depth
+    };
+
+    document
+        .getElementById("output")
+        .value =
+        JSON.stringify(
+            result,
+            null,
+            2
+        );
+}
 document
 .getElementById("exportBtn")
 .onclick=()=>{
@@ -1339,8 +1378,10 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
     try {
         const file = e.target.files[0];
         if (!file) return;
-
         const text = await file.text();
+
+        document.getElementById("output").value = text;
+
         const data = JSON.parse(text);
 
         console.log("LOADED JSON:", data);
