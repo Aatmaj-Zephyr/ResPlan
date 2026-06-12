@@ -1244,18 +1244,6 @@ canvas.addEventListener("wheel",e=>{
 
 
 
-document.getElementById("zoomInBtn").onclick=()=>{
-    setZoom(zoomLevel + ZOOM_STEP);
-};
-
-document.getElementById("zoomOutBtn").onclick=()=>{
-    setZoom(zoomLevel - ZOOM_STEP);
-};
-
-document.getElementById("zoomResetBtn").onclick=()=>{
-    setZoom(DEFAULT_ZOOM_LEVEL);
-};
-
 document.getElementById("homeBtn").onclick = ()=>{
     goHome();
 };
